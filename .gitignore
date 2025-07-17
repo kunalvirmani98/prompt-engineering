@@ -4,4 +4,11 @@ __pycache__/
 *.pyc
 .env
 uploads/
-ai_conversation_log.json 
+ai_conversation_log.json
+Master_PRD.md
+PRD_phase_1.md
+PRD_phase_2.md
+PRD_phase_3.md
+PRD_phase_4.md
+PRD_phase_5.md
+PRD_phase_6.md 
