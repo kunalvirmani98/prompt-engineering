@@ -1,0 +1,7 @@
+tax_advisor/
+venv/
+__pycache__/
+*.pyc
+.env
+uploads/
+ai_conversation_log.json 
