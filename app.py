@@ -8,7 +8,7 @@ import pytesseract
 from PIL import Image
 import openai
 import tempfile
-import psycopg2
+import csv
 from tax_calculator import compare_regimes
 import json
 
@@ -24,7 +24,6 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.secret_key = SECRET_KEY
 
 openai.api_key = os.getenv('GEMINI_API_KEY')
-DB_URL = os.getenv('DB_URL')
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -63,44 +62,40 @@ def structure_data_with_gemini(raw_text):
         'tax_regime': 'new',
     }
 
-def save_to_db(user_data, tax_data, session_id):
-    try:
-        conn = psycopg2.connect(DB_URL)
-        cur = conn.cursor()
-        # Save to UserFinancials
-        cur.execute('''
-            INSERT INTO UserFinancials (session_id, gross_salary, basic_salary, hra_received, rent_paid, deduction_80c, deduction_80d, standard_deduction, professional_tax, tds)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            ON CONFLICT (session_id) DO NOTHING
-        ''', (
-            session_id,
-            user_data['gross_salary'],
-            user_data['basic_salary'],
-            user_data['hra_received'],
-            user_data['rent_paid'],
-            user_data['deduction_80c'],
-            user_data['deduction_80d'],
-            user_data['standard_deduction'],
-            user_data['professional_tax'],
-            user_data['tds'],
-        ))
-        # Save to TaxComparison
-        cur.execute('''
-            INSERT INTO TaxComparison (session_id, tax_old_regime, tax_new_regime, best_regime, selected_regime)
-            VALUES (%s,%s,%s,%s,%s)
-            ON CONFLICT (session_id) DO NOTHING
-        ''', (
-            session_id,
-            tax_data['tax_old_regime'],
-            tax_data['tax_new_regime'],
-            tax_data['best_regime'],
-            user_data['tax_regime'],
-        ))
-        conn.commit()
-        cur.close()
-        conn.close()
-    except Exception as e:
-        print('DB Error:', e)
+def save_to_csv(user_data, tax_data, session_id):
+    user_financials_path = os.path.join('data', 'user_financials.csv')
+    tax_comparison_path = os.path.join('data', 'tax_comparison.csv')
+    # Write user financials
+    user_fields = [
+        'session_id', 'gross_salary', 'basic_salary', 'hra_received', 'rent_paid',
+        'deduction_80c', 'deduction_80d', 'standard_deduction', 'professional_tax', 'tds'
+    ]
+    if not os.path.exists(user_financials_path):
+        with open(user_financials_path, 'w', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=user_fields)
+            writer.writeheader()
+    with open(user_financials_path, 'a', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=user_fields)
+        row = {k: user_data.get(k, '') for k in user_fields}
+        row['session_id'] = session_id
+        writer.writerow(row)
+    # Write tax comparison
+    tax_fields = [
+        'session_id', 'tax_old_regime', 'tax_new_regime', 'best_regime', 'selected_regime'
+    ]
+    if not os.path.exists(tax_comparison_path):
+        with open(tax_comparison_path, 'w', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=tax_fields)
+            writer.writeheader()
+    with open(tax_comparison_path, 'a', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=tax_fields)
+        writer.writerow({
+            'session_id': session_id,
+            'tax_old_regime': tax_data['tax_old_regime'],
+            'tax_new_regime': tax_data['tax_new_regime'],
+            'best_regime': tax_data['best_regime'],
+            'selected_regime': user_data['tax_regime'],
+        })
 
 def get_followup_question(user_data):
     # Placeholder: In production, generate a contextual question using Gemini API
@@ -186,9 +181,9 @@ def review():
         }
         session['reviewed_data'] = reviewed_data
         session_id = session.get('session_id', str(uuid.uuid4()))
-        # Tax calculation and DB save
+        # Tax calculation and CSV save
         tax_data = compare_regimes(reviewed_data)
-        save_to_db(reviewed_data, tax_data, session_id)
+        save_to_csv(reviewed_data, tax_data, session_id)
         # Pass all to results page, always show the AI advisor button
         return render_template('results.html',
             tax_old_regime=tax_data['tax_old_regime'],
