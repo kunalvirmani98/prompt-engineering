@@ -63,6 +63,10 @@ def structure_data_with_gemini(raw_text):
     }
 
 def save_to_csv(user_data, tax_data, session_id):
+    import os
+    # Ensure the data directory exists
+    if not os.path.exists('data'):
+        os.makedirs('data')
     user_financials_path = os.path.join('data', 'user_financials.csv')
     tax_comparison_path = os.path.join('data', 'tax_comparison.csv')
     # Write user financials
